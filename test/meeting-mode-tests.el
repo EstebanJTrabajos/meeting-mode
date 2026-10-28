@@ -23,6 +23,10 @@
 (require 'ert)
 (require 'meeting-mode)
 
+(defun meeting-mode-test--hook-value (hook)
+  "Return HOOK's value when HOOK is bound, otherwise nil."
+  (and (boundp hook) (symbol-value hook)))
+
 (ert-deftest meeting-mode-loads-without-config ()
   (should (featurep 'meeting-mode))
   (should (commandp 'meeting-mode))
@@ -47,7 +51,8 @@
         (should (memq #'meeting--on-minibuffer-setup
                       minibuffer-setup-hook))
         (should (memq #'meeting--on-transient-setup
-                      transient-setup-buffer-hook))
+                      (meeting-mode-test--hook-value
+                       'transient-setup-buffer-hook)))
         (should (memq #'meeting--regenerate-accent
                       enable-theme-functions))
         (should (window-parameter (selected-window)
@@ -138,7 +143,8 @@
       (progn
         (meeting-mode 1)
         (should (memq #'meeting--on-transient-setup
-                      transient-setup-buffer-hook)))
+                      (meeting-mode-test--hook-value
+                       'transient-setup-buffer-hook))))
     (meeting-mode -1)))
 
 (provide 'meeting-mode-tests)
