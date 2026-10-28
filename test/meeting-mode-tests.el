@@ -3,6 +3,7 @@
 ;; Copyright (C) 2026  Esteban Trabajos
 
 ;; Author: Esteban Trabajos <etrabajos@bozoslivehe.re>
+;; Assisted-by: OpenCode:deepseek-v4.1-flash-1017
 ;; URL: https://github.com/estebanjtrabajos/meeting-mode
 ;; Package-Requires: ((emacs "29.1"))
 
@@ -147,5 +148,4 @@
                        'transient-setup-buffer-hook))))
     (meeting-mode -1)))
 
-(provide 'meeting-mode-tests)
 ;;; meeting-mode-tests.el ends here

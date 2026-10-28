@@ -3,6 +3,7 @@
 ;; Copyright (C) 2026  Esteban Trabajos
 
 ;; Author: Esteban Trabajos <etrabajos@bozoslivehe.re>
+;; Assisted-by: OpenCode:deepseek-v4.1-flash-1017
 ;; Maintainer: Esteban Trabajos <etrabajos@bozoslivehe.re>
 ;; Version: 0.1.0
 ;; Package-Requires: ((emacs "29.1"))
@@ -82,7 +83,7 @@ When nil, derive the accent from the current theme."
   :package-version '(meeting-mode . "0.1.0"))
 
 (defface meeting-accent
-  '((t :inherit highlight :extend t))
+  '((t :background "#e6a700" :foreground "#000000" :extend t))
   "Accent face for focused-window bars and mode lines."
   :group 'meeting
   :package-version '(meeting-mode . "0.1.0"))
