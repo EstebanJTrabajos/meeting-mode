@@ -148,4 +148,22 @@
                        'transient-setup-buffer-hook))))
     (meeting-mode -1)))
 
+(ert-deftest meeting-mode-vertico-posframe-border-follows-accent ()
+  (skip-unless (fboundp 'vertico-posframe--get-border-color))
+  (unwind-protect
+      (let ((meeting-accent-color "#123456"))
+        (meeting-mode 1)
+        (should (advice-member-p #'meeting--vertico-border-color
+                                 'vertico-posframe--get-border-color))
+        (should (equal (vertico-posframe--get-border-color) "#123456")))
+    (meeting-mode -1)))
+
+(ert-deftest meeting-mode-vertico-flash-is-safe-without-posframe ()
+  (unwind-protect
+      (progn
+        (meeting-mode 1)
+        (meeting--flash-vertico-posframe)
+        (should-not meeting--vertico-flash-frame))
+    (meeting-mode -1)))
+
 ;;; meeting-mode-tests.el ends here

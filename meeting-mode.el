@@ -5,7 +5,7 @@
 ;; Author: Esteban Trabajos <etrabajos@bozoslivehe.re>
 ;; Assisted-by: OpenCode:deepseek-v4.1-flash-1017
 ;; Maintainer: Esteban Trabajos <etrabajos@bozoslivehe.re>
-;; Version: 0.1.0
+;; Version: 0.1.1
 ;; Package-Requires: ((emacs "29.1"))
 ;; Keywords: convenience, frames, faces
 ;; URL: https://github.com/estebanjtrabajos/meeting-mode
@@ -31,7 +31,8 @@
 ;; sharing a screen.  When focus changes, it briefly tints the newly focused
 ;; window and keeps a theme-derived accent on that window's fringe, mode line,
 ;; header line, and tab line.  It follows ordinary window selection, buffer
-;; switches, the active minibuffer, and (when available) Transient menus.
+;; switches, the active minibuffer, (when available) Transient menus, and the
+;; Vertico posframe child frame.
 ;;
 ;; Enable it with M-x meeting-mode.  There is no default key binding:
 ;;
@@ -53,6 +54,10 @@
 (require 'face-remap)
 (require 'seq)
 (require 'subr-x)
+
+(defvar posframe--frame)
+(defvar vertico-posframe--buffer)
+(declare-function vertico-posframe--get-border-color "vertico-posframe")
 
 (defgroup meeting nil
   "Make the focused Emacs window easy to follow."
@@ -104,6 +109,9 @@ When nil, derive the accent from the current theme."
 (defvar meeting--flash-window nil)
 (defvar meeting--flash-buffer nil)
 (defvar meeting--flash-cookie nil)
+(defvar meeting--vertico-flash-timer nil)
+(defvar meeting--vertico-flash-frame nil)
+(defvar meeting--vertico-flash-original nil)
 (defvar meeting--refresh-timer nil)
 (defvar meeting--refresh-pending-flash nil)
 (defvar meeting--last-window nil)
@@ -175,6 +183,7 @@ When nil, derive the accent from the current theme."
                         :foreground 'unspecified
                         :extend t)
     (when meeting-mode
+      (meeting--refresh-vertico-posframe)
       (dolist (frame (frame-list))
         (force-window-update frame)))))
 
@@ -255,6 +264,91 @@ When nil, derive the accent from the current theme."
             (run-at-time meeting-flash-duration nil
                          #'meeting--clear-flash)))))
 
+;;; Vertico posframe
+
+(defun meeting--vertico-posframe-frame ()
+  "Return the live Vertico posframe child frame, when present."
+  (when (and (boundp 'vertico-posframe--buffer)
+             (buffer-live-p vertico-posframe--buffer))
+    (with-current-buffer vertico-posframe--buffer
+      (when (and (boundp 'posframe--frame)
+                 (frame-live-p posframe--frame))
+        posframe--frame))))
+
+(defun meeting--vertico-border-color (original)
+  "Return the Vertico posframe border color.
+Use the meeting accent while the mode is active, otherwise ORIGINAL."
+  (if meeting-mode
+      meeting--accent
+    (funcall original)))
+
+(defun meeting--refresh-vertico-posframe ()
+  "Apply or restore the current Vertico posframe accent."
+  (meeting--install-vertico-advice)
+  (when-let* ((frame (meeting--vertico-posframe-frame))
+              (color (if meeting-mode
+                         meeting--accent
+                       (and (fboundp 'vertico-posframe--get-border-color)
+                            (vertico-posframe--get-border-color)))))
+    (when (stringp color)
+      (dolist (face '(child-frame-border internal-border))
+        (when (facep face)
+          (set-face-background face color frame)))
+      (force-window-update (frame-root-window frame)))))
+
+(defun meeting--clear-vertico-flash ()
+  "Remove the current Vertico posframe flash."
+  (when (timerp meeting--vertico-flash-timer)
+    (cancel-timer meeting--vertico-flash-timer))
+  (when (and meeting--vertico-flash-frame
+             (frame-live-p meeting--vertico-flash-frame))
+    (let* ((frame meeting--vertico-flash-frame)
+           (original (or meeting--vertico-flash-original
+                         (face-background 'default frame))))
+      (when (meeting--valid-color-p original)
+        (set-frame-parameter frame 'background-color original)
+        (set-face-background 'vertico-posframe original frame))))
+  (setq meeting--vertico-flash-timer nil
+        meeting--vertico-flash-frame nil
+        meeting--vertico-flash-original nil))
+
+(defun meeting--flash-vertico-posframe ()
+  "Briefly tint the Vertico posframe child frame."
+  (when meeting-mode
+    (when-let* ((frame (meeting--vertico-posframe-frame)))
+      (meeting--clear-vertico-flash)
+      (let* ((original (or (and (meeting--valid-color-p
+                                 (frame-parameter frame 'background-color))
+                                (frame-parameter frame 'background-color))
+                           (and (meeting--valid-color-p
+                                 (face-background 'default frame))
+                                (face-background 'default frame))
+                           "#ffffff"))
+             (background (or (and (meeting--valid-color-p
+                                   (face-background 'default frame))
+                                  (face-background 'default frame))
+                             "#ffffff"))
+             (color (meeting--blend meeting--accent background
+                                    meeting-flash-alpha)))
+        (setq meeting--vertico-flash-frame frame
+              meeting--vertico-flash-original original)
+        (set-frame-parameter frame 'background-color color)
+        (set-face-background 'vertico-posframe color frame)
+        (force-window-update (frame-root-window frame))
+        (setq meeting--vertico-flash-timer
+              (run-at-time meeting-flash-duration nil
+                           #'meeting--clear-vertico-flash))))))
+
+(defun meeting--install-vertico-advice ()
+  "Install the Vertico posframe border advice when available."
+  (when (and (fboundp 'vertico-posframe--get-border-color)
+             (not (advice-member-p #'meeting--vertico-border-color
+                                   'vertico-posframe--get-border-color)))
+    (advice-add 'vertico-posframe--get-border-color :around
+                #'meeting--vertico-border-color)))
+
+(meeting--install-vertico-advice)
+
 (defun meeting--refresh (&optional flash)
   "Update the meeting accent, and flash when FLASH is non-nil."
   (when meeting-mode
@@ -302,7 +396,9 @@ DELAY defaults to 20 milliseconds."
   (when (active-minibuffer-window)
     (meeting--ensure-remaps
      (window-buffer (active-minibuffer-window))))
-  (meeting--schedule-refresh t 0.01))
+  (meeting--install-vertico-advice)
+  (meeting--schedule-refresh t 0.01)
+  (run-at-time 0.05 nil #'meeting--flash-vertico-posframe))
 
 (defun meeting--on-minibuffer-exit ()
   "Restore the accent after leaving the minibuffer."
@@ -387,6 +483,13 @@ theme-derived accent on its fringes, mode line, and header line."
           meeting--last-window nil
           meeting--last-buffer nil)
     (meeting--clear-flash)
+    (meeting--clear-vertico-flash)
+    (meeting--refresh-vertico-posframe)
+    (when (and (fboundp 'vertico-posframe--get-border-color)
+               (advice-member-p #'meeting--vertico-border-color
+                                'vertico-posframe--get-border-color))
+      (advice-remove 'vertico-posframe--get-border-color
+                     #'meeting--vertico-border-color))
     (dolist (frame (frame-list))
       (dolist (win (window-list frame t))
         (set-window-parameter win 'meeting--focused nil)))
@@ -398,6 +501,11 @@ theme-derived accent on its fringes, mode line, and header line."
   "Disable `meeting-mode' before unloading the package."
   (when meeting-mode
     (meeting-mode -1))
+  (when (and (fboundp 'vertico-posframe--get-border-color)
+             (advice-member-p #'meeting--vertico-border-color
+                              'vertico-posframe--get-border-color))
+    (advice-remove 'vertico-posframe--get-border-color
+                   #'meeting--vertico-border-color))
   nil)
 
 (provide 'meeting-mode)

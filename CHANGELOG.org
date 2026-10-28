@@ -1,5 +1,10 @@
 #+title: Changelog
 
+* 0.1.1
+
+- Highlight the Vertico posframe child frame with the meeting accent border
+  and focus flash.
+
 * 0.1.0
 
 - Initial public release.
