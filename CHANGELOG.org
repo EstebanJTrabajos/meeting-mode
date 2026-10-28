@@ -1,0 +1,12 @@
+#+title: Changelog
+
+* 0.1.0
+
+- Initial public release.
+- Flash the newly focused window and keep a theme-derived accent on its fringe,
+  mode line, header line, and tab line.
+- Follow window, buffer, minibuffer, frame, and optional Transient focus changes.
+- Add customization options for the flash duration, flash strength, and accent
+  color.
+- Add standalone ERT coverage for enable/disable cleanup, accent regeneration,
+  focus tracking, flash timers, refresh scheduling, and optional Transient use.
