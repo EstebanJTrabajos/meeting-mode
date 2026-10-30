@@ -4,6 +4,8 @@
 
 - Highlight the Vertico posframe child frame with the meeting accent border
   and focus flash.
+- Frame Transient menus with the accent on the header and mode lines, and
+  follow the popup even when another window remains selected.
 
 * 0.1.0
 

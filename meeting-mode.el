@@ -56,7 +56,10 @@
 (require 'subr-x)
 
 (defvar posframe--frame)
+(defvar transient--buffer)
+(defvar transient--showp)
 (defvar vertico-posframe--buffer)
+(declare-function transient--mode-line-format "transient")
 (declare-function vertico-posframe--get-border-color "vertico-posframe")
 
 (defgroup meeting nil
@@ -121,8 +124,13 @@ When nil, derive the accent from the current theme."
   '((fringe . meeting-accent-bg)
     (mode-line . meeting-accent)
     (mode-line-active . meeting-accent)
+    (mode-line-inactive . meeting-accent)
     (header-line . meeting-accent)
-    (tab-line . meeting-accent))
+    (header-line-active . meeting-accent)
+    (header-line-inactive . meeting-accent)
+    (tab-line . meeting-accent)
+    (tab-line-active . meeting-accent)
+    (tab-line-inactive . meeting-accent))
   "Faces remapped only in the focused window.")
 
 (defun meeting--valid-color-p (color)
@@ -209,9 +217,18 @@ When nil, derive the accent from the current theme."
       (mapc #'face-remap-remove-relative meeting--face-cookies)
       (setq meeting--face-cookies nil))))
 
+(defun meeting--transient-window ()
+  "Return the Transient popup window when it is being displayed."
+  (when (and (boundp 'transient--showp)
+             transient--showp
+             (boundp 'transient--buffer)
+             (buffer-live-p transient--buffer))
+    (get-buffer-window transient--buffer)))
+
 (defun meeting--target-window ()
   "Return the window that currently owns keyboard focus."
   (or (active-minibuffer-window)
+      (meeting--transient-window)
       (selected-window)))
 
 (defun meeting--set-focused-window (window)
@@ -405,14 +422,9 @@ DELAY defaults to 20 milliseconds."
   (meeting--schedule-refresh nil 0.01))
 
 (defun meeting--focus-transient ()
-  "Focus and flash the transient popup when it is visible."
+  "Focus and flash the Transient popup when it is visible."
   (when meeting-mode
-    (let* ((transient-window (and (boundp 'transient--window)
-                                  (symbol-value 'transient--window)))
-           (window (or (and (window-live-p transient-window)
-                            transient-window)
-                       (get-buffer-window " *transient*" t)
-                       (selected-window))))
+    (let ((window (meeting--transient-window)))
       (when (window-live-p window)
         (meeting--set-focused-window window)
         (when (or (not (eq window meeting--last-window))
@@ -423,8 +435,19 @@ DELAY defaults to 20 milliseconds."
                 meeting--last-buffer (window-buffer window)))))))
 
 (defun meeting--on-transient-setup ()
-  "Handle a transient menu becoming visible."
+  "Handle a Transient menu becoming visible."
   (when meeting-mode
+    (when (and (boundp 'transient--buffer)
+               (buffer-live-p transient--buffer))
+      (with-current-buffer transient--buffer
+        ;; Transient hides these display areas.  Show them so the accent
+        ;; frames the popup on all four sides.
+        (unless header-line-format
+          (setq header-line-format " "))
+        (when (and (not mode-line-format)
+                   (or (not (fboundp 'transient--mode-line-format))
+                       (transient--mode-line-format)))
+          (setq mode-line-format " "))))
     (run-at-time 0.03 nil #'meeting--focus-transient)))
 
 (defun meeting--on-transient-exit ()

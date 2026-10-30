@@ -24,6 +24,11 @@
 (require 'ert)
 (require 'meeting-mode)
 
+;; Declared here so the Transient tests can bind them without loading
+;; Transient itself.  These are the variables declared by `transient'.
+(defvar transient--buffer)
+(defvar transient--showp)
+
 (defun meeting-mode-test--hook-value (hook)
   "Return HOOK's value when HOOK is bound, otherwise nil."
   (and (boundp hook) (symbol-value hook)))
@@ -147,6 +152,49 @@
                       (meeting-mode-test--hook-value
                        'transient-setup-buffer-hook))))
     (meeting-mode -1)))
+
+(ert-deftest meeting-mode-accent-faces-cover-inactive-display-areas ()
+  (should (assq 'mode-line-inactive meeting--accent-faces))
+  (when (facep 'header-line-inactive)
+    (should (assq 'header-line-inactive meeting--accent-faces)))
+  (when (facep 'tab-line-inactive)
+    (should (assq 'tab-line-inactive meeting--accent-faces))))
+
+(ert-deftest meeting-mode-transient-focus-prefers-popup ()
+  (let* ((selected (selected-window))
+         (popup (split-window selected))
+         (buffer (get-buffer-create " *meeting-transient-test*")))
+    (unwind-protect
+        (progn
+          (set-window-buffer popup buffer)
+          (select-window selected)
+          (let ((transient--showp t)
+                (transient--buffer buffer))
+            (should (eq (meeting--transient-window) popup))
+            (should (eq (meeting--target-window) popup))))
+      (kill-buffer buffer)
+      (when (window-live-p popup)
+        (delete-window popup))
+      (select-window selected))))
+
+(ert-deftest meeting-mode-transient-popup-gets-accent-areas ()
+  (let ((buffer (get-buffer-create " *meeting-transient-test*")))
+    (unwind-protect
+        (progn
+          (meeting-mode 1)
+          (with-current-buffer buffer
+            (setq header-line-format nil
+                  mode-line-format nil))
+          (let ((transient--buffer buffer)
+                (transient--showp t))
+            (cl-letf (((symbol-function 'run-at-time)
+                       (lambda (&rest _) nil)))
+              (meeting--on-transient-setup)))
+          (with-current-buffer buffer
+            (should (equal header-line-format " "))
+            (should (equal mode-line-format " "))))
+      (kill-buffer buffer)
+      (meeting-mode -1))))
 
 (ert-deftest meeting-mode-vertico-posframe-border-follows-accent ()
   (skip-unless (fboundp 'vertico-posframe--get-border-color))
