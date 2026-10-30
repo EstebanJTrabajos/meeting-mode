@@ -38,7 +38,10 @@
   (should (commandp 'meeting-mode))
   (should (custom-variable-p 'meeting-flash-duration))
   (should (custom-variable-p 'meeting-flash-alpha))
-  (should (custom-variable-p 'meeting-accent-color)))
+  (should (custom-variable-p 'meeting-accent-color))
+  (should (custom-variable-p 'meeting-border-width))
+  (should (custom-variable-p 'meeting-blink-count))
+  (should (custom-variable-p 'meeting-blink-interval)))
 
 (ert-deftest meeting-mode-has-no-default-global-binding ()
   (should-not (where-is-internal 'meeting-mode (current-global-map) t)))
@@ -131,6 +134,60 @@
           (should-not (window-parameter window 'meeting--flash))
           (should-not meeting--flash-cookie)))
     (meeting-mode -1)))
+
+(ert-deftest meeting-mode-flash-blinks-the-configured-number ()
+  (unwind-protect
+      (progn
+        (meeting-mode 1)
+        (let ((window (selected-window))
+              (meeting-blink-count 2)
+              (meeting-blink-interval 150)
+              callbacks)
+          (cl-letf (((symbol-function 'run-at-time)
+                     (lambda (_delay _repeat function &rest _args)
+                       (push function callbacks)
+                       'meeting-test-timer))
+                    ((symbol-function 'cancel-timer) #'ignore))
+            (meeting--flash-window window)
+            (should (window-parameter window 'meeting--flash))
+            (should (= meeting--flash-blinks-left 2))
+            ;; First off phase.
+            (funcall (pop callbacks))
+            (should-not (window-parameter window 'meeting--flash))
+            (should (= meeting--flash-blinks-left 1))
+            ;; Second on phase.
+            (funcall (pop callbacks))
+            (should (window-parameter window 'meeting--flash))
+            (should (= meeting--flash-blinks-left 1))
+            ;; Final off phase.
+            (funcall (pop callbacks))
+            (should-not (window-parameter window 'meeting--flash))
+            (should (= meeting--flash-blinks-left 0))
+            (should-not meeting--flash-cookie))))
+    (meeting-mode -1)))
+
+(ert-deftest meeting-mode-blink-timing-defaults ()
+  (let ((meeting-flash-duration 0.3)
+        (meeting-blink-count 2)
+        (meeting-blink-interval nil))
+    (should (= (meeting--blink-interval-ms) 150))
+    (should (= (meeting--flash-total-duration) 0.3)))
+  (let ((meeting-blink-interval 200)
+        (meeting-blink-count 3))
+    (should (= (meeting--blink-interval-ms) 200))
+    (should (= (meeting--flash-total-duration) 0.6))))
+
+(ert-deftest meeting-mode-border-width-is-applied-and-restored ()
+  (let ((original fringe-mode))
+    (unwind-protect
+        (progn
+          (setq meeting-border-width 4)
+          (meeting-mode 1)
+          (should (equal fringe-mode (cons 4 4)))
+          (meeting-mode -1)
+          (should (equal fringe-mode original)))
+      (meeting-mode -1)
+      (setq fringe-mode original))))
 
 (ert-deftest meeting-mode-scheduler-preserves-pending-flash ()
   (unwind-protect

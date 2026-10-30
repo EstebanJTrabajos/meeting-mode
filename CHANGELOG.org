@@ -6,6 +6,10 @@
   and focus flash.
 - Frame Transient menus with the accent on the header and mode lines, and
   follow the popup even when another window remains selected.
+- Add =meeting-border-width= for the accent fringe width.
+- Add =meeting-blink-count= and =meeting-blink-interval= to control the
+  focus blink, and make =meeting-flash-duration= the total blink time when
+  the interval is derived.
 
 * 0.1.0
 
