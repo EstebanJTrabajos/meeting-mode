@@ -53,6 +53,7 @@
 (require 'cl-lib)
 (require 'color)
 (require 'face-remap)
+(require 'fringe)
 (require 'seq)
 (require 'subr-x)
 
@@ -60,7 +61,6 @@
 (defvar transient--buffer)
 (defvar transient--showp)
 (defvar vertico-posframe--buffer)
-(declare-function fringe-mode "fringe")
 (declare-function transient--mode-line-format "transient")
 (declare-function vertico-posframe--get-border-color "vertico-posframe")
 
@@ -470,7 +470,7 @@ DELAY defaults to 20 milliseconds."
   (meeting--schedule-refresh t))
 
 (defun meeting--on-window-state-change (&rest _)
-  "Handle window geometry or buffer changes."
+  "Handle a window geometry or buffer change."
   (meeting--schedule-refresh nil))
 
 (defun meeting--on-window-buffer-change (&rest _)
