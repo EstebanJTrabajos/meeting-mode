@@ -118,6 +118,11 @@ accent is applied through buffer-local face remappings filtered to the focused
 window, so it does not change global face definitions or require a separate
 overlay.
 
+Transient normally hides its popup's header and mode lines. While
+`meeting-mode' is active, it restores blank accent lines there so the popup
+is framed on all four sides. The popup is treated as the focused window even
+though Transient leaves the original window selected.
+
 When `vertico-posframe` is loaded, the mode also supplies its theme-derived
 accent as the posframe border color and briefly tints the child frame when the
 minibuffer opens. Disabling the mode restores the package's normal posframe
