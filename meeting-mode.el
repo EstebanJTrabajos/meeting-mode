@@ -40,8 +40,9 @@
 ;;
 ;; The accent is derived from the current theme's `isearch', `highlight',
 ;; `region', or `mode-line' background.  Customize `meeting-accent-color' to
-;; use a fixed color, or adjust `meeting-flash-duration' and
-;; `meeting-flash-alpha' to change the flash.
+;; use a fixed color, `meeting-border-width' for the fringe width, and
+;; `meeting-blink-count', `meeting-blink-interval', or
+;; `meeting-flash-duration' to change the focus blink.
 ;;
 ;; The implementation is inspired by `winpulse' (momentary window flashes)
 ;; and `selected-window-accent-mode' (focused-window fringes and mode line),
@@ -59,6 +60,7 @@
 (defvar transient--buffer)
 (defvar transient--showp)
 (defvar vertico-posframe--buffer)
+(declare-function fringe-mode "fringe")
 (declare-function transient--mode-line-format "transient")
 (declare-function vertico-posframe--get-border-color "vertico-posframe")
 
@@ -70,11 +72,43 @@
 (defvar meeting-mode nil
   "Non-nil when `meeting-mode' is enabled.")
 
-(defcustom meeting-flash-duration 0.15
-  "Seconds to keep the focused-window tint visible."
+(defun meeting--set-border-width (symbol value)
+  "Set SYMBOL to VALUE and apply the fringe width when active."
+  (set-default symbol value)
+  (when (and meeting-mode (integerp value))
+    (fringe-mode (cons value value))))
+
+(defcustom meeting-border-width 4
+  "Width in pixels of the focused window's accent fringes.
+The mode sets this width for every frame while active and restores the
+previous fringe setting when disabled."
+  :type 'natnum
+  :group 'meeting
+  :package-version '(meeting-mode . "0.1.1")
+  :set #'meeting--set-border-width)
+
+(defcustom meeting-flash-duration 0.3
+  "Total seconds for the focused-window blink sequence.
+When `meeting-blink-interval' is non-nil it overrides this total."
   :type 'number
   :group 'meeting
   :package-version '(meeting-mode . "0.1.0"))
+
+(defcustom meeting-blink-count 2
+  "Number of times to blink the newly focused window."
+  :type 'natnum
+  :group 'meeting
+  :package-version '(meeting-mode . "0.1.1"))
+
+(defcustom meeting-blink-interval nil
+  "Milliseconds from the start of one blink to the start of the next.
+When nil, derive the interval from `meeting-flash-duration' divided by
+`meeting-blink-count'.  The tint is on for half of each interval and off
+for the other half."
+  :type '(choice (const :tag "Derive from flash duration" nil)
+                 natnum)
+  :group 'meeting
+  :package-version '(meeting-mode . "0.1.1"))
 
 (defcustom meeting-flash-alpha 0.22
   "Strength of the focused-window tint, from 0 to 1."
@@ -112,6 +146,8 @@ When nil, derive the accent from the current theme."
 (defvar meeting--flash-window nil)
 (defvar meeting--flash-buffer nil)
 (defvar meeting--flash-cookie nil)
+(defvar meeting--flash-blinks-left 0)
+(defvar meeting--original-fringe-mode nil)
 (defvar meeting--vertico-flash-timer nil)
 (defvar meeting--vertico-flash-frame nil)
 (defvar meeting--vertico-flash-original nil)
@@ -241,6 +277,17 @@ When nil, derive the accent from the current theme."
   (dolist (frame (frame-list))
     (force-window-update frame)))
 
+(defun meeting--blink-interval-ms ()
+  "Return the blink interval in milliseconds."
+  (or meeting-blink-interval
+      (max 1 (round (/ (* 1000 meeting-flash-duration)
+                       (max 1 meeting-blink-count))))))
+
+(defun meeting--flash-total-duration ()
+  "Return the total blink sequence duration in seconds."
+  (/ (* (max 1 meeting-blink-count) (meeting--blink-interval-ms))
+     1000.0))
+
 (defun meeting--clear-flash ()
   "Remove the current focused-window flash."
   (when (timerp meeting--flash-timer)
@@ -256,10 +303,35 @@ When nil, derive the accent from the current theme."
   (setq meeting--flash-timer nil
         meeting--flash-window nil
         meeting--flash-buffer nil
-        meeting--flash-cookie nil))
+        meeting--flash-cookie nil
+        meeting--flash-blinks-left 0))
+
+(defun meeting--flash-on ()
+  "Turn on the current blink and schedule its off phase."
+  (when (and meeting-mode
+             (window-live-p meeting--flash-window))
+    (set-window-parameter meeting--flash-window 'meeting--flash t)
+    (force-window-update meeting--flash-window)
+    (setq meeting--flash-timer
+          (run-at-time (/ (meeting--blink-interval-ms) 2000.0) nil
+                       #'meeting--flash-off))))
+
+(defun meeting--flash-off ()
+  "Turn off the current blink and start the next one when due."
+  (when (window-live-p meeting--flash-window)
+    (set-window-parameter meeting--flash-window 'meeting--flash nil)
+    (force-window-update meeting--flash-window))
+  (setq meeting--flash-blinks-left (1- meeting--flash-blinks-left))
+  (if (and meeting-mode
+           (> meeting--flash-blinks-left 0)
+           (window-live-p meeting--flash-window))
+      (setq meeting--flash-timer
+            (run-at-time (/ (meeting--blink-interval-ms) 2000.0) nil
+                         #'meeting--flash-on))
+    (meeting--clear-flash)))
 
 (defun meeting--flash-window (window)
-  "Briefly tint WINDOW to announce focus."
+  "Blink WINDOW to announce focus."
   (when (and meeting-mode (window-live-p window))
     (meeting--clear-flash)
     (let* ((buffer (window-buffer window))
@@ -268,18 +340,15 @@ When nil, derive the accent from the current theme."
                                      meeting-flash-alpha)))
       (meeting--ensure-remaps buffer)
       (setq meeting--flash-window window
-            meeting--flash-buffer buffer)
+            meeting--flash-buffer buffer
+            meeting--flash-blinks-left (max 1 meeting-blink-count))
       (with-current-buffer buffer
         (setq meeting--flash-cookie
               (face-remap-add-relative
                'default
                `(:filtered (:window meeting--flash t)
                            (:background ,color)))))
-      (set-window-parameter window 'meeting--flash t)
-      (force-window-update window)
-      (setq meeting--flash-timer
-            (run-at-time meeting-flash-duration nil
-                         #'meeting--clear-flash)))))
+      (meeting--flash-on))))
 
 ;;; Vertico posframe
 
@@ -353,7 +422,7 @@ Use the meeting accent while the mode is active, otherwise ORIGINAL."
         (set-face-background 'vertico-posframe color frame)
         (force-window-update (frame-root-window frame))
         (setq meeting--vertico-flash-timer
-              (run-at-time meeting-flash-duration nil
+              (run-at-time (meeting--flash-total-duration) nil
                            #'meeting--clear-vertico-flash))))))
 
 (defun meeting--install-vertico-advice ()
@@ -462,7 +531,7 @@ DELAY defaults to 20 milliseconds."
 ;;;###autoload
 (define-minor-mode meeting-mode
   "Make the focused Emacs window easy to follow during screen sharing.
-The focused window briefly flashes when focus moves and keeps a thin
+The focused window briefly blinks when focus moves and keeps a thin
 theme-derived accent on its fringes, mode line, and header line."
   :global t
   :lighter " MTG"
@@ -470,6 +539,9 @@ theme-derived accent on its fringes, mode line, and header line."
   (if meeting-mode
       (progn
         (meeting--regenerate-accent)
+        (setq meeting--original-fringe-mode fringe-mode)
+        (when (integerp meeting-border-width)
+          (fringe-mode (cons meeting-border-width meeting-border-width)))
         (add-hook 'window-selection-change-functions
                   #'meeting--on-window-selection-change)
         (add-hook 'window-state-change-functions
@@ -507,6 +579,8 @@ theme-derived accent on its fringes, mode line, and header line."
           meeting--last-buffer nil)
     (meeting--clear-flash)
     (meeting--clear-vertico-flash)
+    (fringe-mode meeting--original-fringe-mode)
+    (setq meeting--original-fringe-mode nil)
     (meeting--refresh-vertico-posframe)
     (when (and (fboundp 'vertico-posframe--get-border-color)
                (advice-member-p #'meeting--vertico-border-color

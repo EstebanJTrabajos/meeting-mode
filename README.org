@@ -11,7 +11,7 @@ line.
 
 * Features
 
-- Briefly flashes the newly focused window.
+- Blinks the newly focused window a configurable number of times.
 - Keeps a thin accent on the focused window's fringe, mode line, header line,
   and tab line when those display areas are present.
 - Follows ordinary window selection, buffer switches, the active minibuffer,
@@ -102,7 +102,15 @@ M-x customize-group RET meeting
 
 The main options are:
 
-- =meeting-flash-duration=: seconds the focused-window tint remains visible.
+- =meeting-border-width=: fringe width in pixels for the accent border
+  (default 4).
+- =meeting-blink-count=: number of times to blink the newly focused window
+  (default 2).
+- =meeting-blink-interval=: milliseconds from the start of one blink to the
+  next. When nil, derive it from =meeting-flash-duration= divided by
+  =meeting-blink-count=.
+- =meeting-flash-duration=: total seconds for the blink sequence when
+  =meeting-blink-interval= is nil (default 0.3).
 - =meeting-flash-alpha=: strength of the tint, from 0 to 1.
 - =meeting-accent-color=: optional fixed accent color. When nil, the color is
   derived from the current theme.
@@ -128,8 +136,8 @@ accent as the posframe border color and briefly tints the child frame when the
 minibuffer opens. Disabling the mode restores the package's normal posframe
 border and background.
 
-The flash is a single short-lived face remapping with a timer. It is not a
-repeating animation.
+The flash is a short-lived face remapping that toggles a filtered window
+parameter on and off for the configured number of blinks.
 
 * Compatibility and limitations
 
